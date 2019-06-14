@@ -16,7 +16,7 @@ try {
   } else {
     console.log(e);
   }
-  
+
   process.exit(1);
 }
 
@@ -29,6 +29,7 @@ if (!settings.gitlab.token || settings.gitlab.token === "{{gitlab private token}
   console.log('\n\nYou have to enter your GitLab private token in the settings.js file.');
   process.exit(1);
 }
+
 
 // Create a GitLab API object
 var gitlab = new Gitlab({
@@ -99,7 +100,7 @@ async function migrate() {
   //
   // Sequentially transfer repo things
   //
-  
+
   if (settings.mergeRequests.log) {
     // transferring is not worth the effort right now so
     // log merge requests
@@ -210,9 +211,9 @@ async function transferLabels(projectId, attachmentLabel = true, useLowerCase = 
 async function transferIssues(owner, repo, projectId) {
   inform("Transferring Issues");
 
-  // Because each 
+  // Because each
   let milestoneData = await getAllGHMilestones(owner, repo);
-  
+
   // get a list of all GitLab issues associated with this project
   // TODO return all issues via pagination
   let issues = await gitlab.Issues.all({projectId: projectId});
@@ -292,7 +293,7 @@ async function logMergeRequests(projectId, logFile) {
   mergeRequests = mergeRequests.sort((a, b) => a.id - b.id);
 
   console.log("Logging " + mergeRequests.length.toString() + " merge requests");
-  
+
   for (let mergeRequest of mergeRequests) {
     let mergeRequestDiscussions = await gitlab.MergeRequestDiscussions.all(projectId, mergeRequest.iid);
     let mergeRequestNotes = await gitlab.MergeRequestNotes.all(projectId, mergeRequest.iid);
@@ -306,7 +307,7 @@ async function logMergeRequests(projectId, logFile) {
   //
   const output = {
     mergeRequests: mergeRequests
-  };  
+  };
 
   fs.writeFileSync(logFile, JSON.stringify(output, null, 2));
 }
@@ -451,13 +452,15 @@ async function createIssueAndComments(owner, repo, milestones, issue) {
  */
 async function createIssue(owner, repo, milestones, issue) {
   let bodyConverted = convertIssuesAndComments(issue.description, issue);
-
+    console.log("GitLab url of issue: " + issue.web_url)
+    console.log("Attachement url corrected to: " + settings.gitlab.url + "/" + owner + "/" + repo)
   let props = {
     owner: owner,
     repo: repo,
     title: issue.title.trim(),
     body: bodyConverted
   };
+
 
   //
   // Issue Assignee
@@ -497,27 +500,27 @@ async function createIssue(owner, repo, milestones, issue) {
       if (issue.state != 'closed') return true;
 
       let lower = l.toLowerCase();
-      // ignore any labels that should have been removed when the issue was closed
+        // ignore any labels that should have been removed when the issue was closed
       return lower != 'doing' && lower != 'to do';
     });
   }
-
   //
   // Issue Attachments
   //
 
   // if the issue contains a url that contains "/uploads/", it is likely to
   // have an attachment. Therefore, add the "has attachment" label.
-  if (props.body && props.body.indexOf('/uploads/') > -1) {
-    props.labels.push('has attachment');
-  }
+  // if (props.body && props.body.indexOf('/uploads/') > -1) {
+  //   props.labels.push('has attachment');
+  // }
   await sleep(2000);
 
   if (settings.debug) return Promise.resolve({data: issue});
-  // create the GitHub issue from the GitLab issue
+    // create the GitHub issue from the GitLab issue
   return github.issues.create(props);
 }
-
+// https://api.github.com/repos/JuPedSim/jpsfire
+// https://api.github.com/repos/JuPedSim/jpsfire/issues
 // ----------------------------------------------------------------------------
 
 /**
@@ -535,7 +538,6 @@ async function createIssueComments(ghIssue, issue) {
     notes = notes.sort((a, b) => a.id - b.id);
 
     for (let note of notes) {
-
       if ((/Status changed to .*/i.test(note.body) && !/Status changed to closed by commit.*/i.test(note.body)) ||
           /changed milestone to .*/i.test(note.body) ||
           /Milestone changed to .*/i.test(note.body) ||
@@ -548,12 +550,12 @@ async function createIssueComments(ghIssue, issue) {
       } else {
 
         let bodyConverted = convertIssuesAndComments(note.body, note);
-        
+          console.log(bodyConverted);
         await sleep(2000);
 
-        if (settings.debug) { 
+        if (settings.debug) {
           console.log(bodyConverted);
-          return Promise.resolve(); 
+          return Promise.resolve();
         }
         // process asynchronous code in sequence -- treats kind of like blocking
         await github.issues.createComment({
@@ -591,11 +593,11 @@ async function updateIssueState(ghIssue, issue) {
     number: ghIssue.number,
     state: issue.state
   };
-  
+
   await sleep(2000);
 
-  if (settings.debug) { 
-    return Promise.resolve(); 
+  if (settings.debug) {
+    return Promise.resolve();
   }
   // make the state update
   return await github.issues.update(props);
@@ -619,7 +621,7 @@ async function createMilestone(owner, repo, milestone) {
   if (milestone.due_date) {
     ghMilestone.due_on = milestone.due_date + 'T00:00:00Z';
   }
-  
+
   await sleep(2000);
 
   if (settings.debug) return Promise.resolve();
@@ -640,7 +642,7 @@ async function createLabel(owner, repo, label) {
     name: label.name,
     color: label.color.substr(1) // remove leading "#" because gitlab returns it but github wants the color without it
   };
-  
+
   await sleep(2000);
 
   if (settings.debug) return Promise.resolve();
@@ -668,7 +670,6 @@ function convertIssuesAndComments(str, item) {
     // - Replace cross-project issue references. They are matched on org/project# so 'matched' ends with '#'
     //   They all have a '#' right after the project name in the issues but we have them without in projectmap
     let strWithMigLine = addMigrationLine(str, item);
-
     strWithMigLine = strWithMigLine.replace(userProjectRe, matched => {
       if (matched.startsWith('@')) {
         // this is a userid
@@ -710,7 +711,12 @@ function addMigrationLine(str, item) {
 
   var formattedDate = new Date(item.created_at).toLocaleString('en-US', dateformatOptions);
 
-  return "In GitLab by @" + item.author.username + " on " + formattedDate + "\n\n" + str;
+    if (str.indexOf('/uploads/') > -1)
+    {
+        str = str.slice(0,str.indexOf('/uploads/')) +  settings.gitlab.url + "/" + settings.github.owner + "/" + settings.github.repo  + str.slice(str.indexOf('/uploads/'))
+    }
+
+  return "In [GitLab]("+item.web_url+")"   +" by @" + item.author.username + " on " + formattedDate + "\n\n" + str;
 }
 
 // ----------------------------------------------------------------------------
